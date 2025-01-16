@@ -30,7 +30,7 @@ def get_debug_info():
                 debug_files.append({
                     'cell_id': cell_id,
                     'process': process,
-                    'url': f'/static/debug/{file}'
+                    'url': f'/debug/{file}'
                 })
     return debug_files
 
