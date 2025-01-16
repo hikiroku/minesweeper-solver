@@ -5,9 +5,9 @@ import cv2
 from PIL import Image
 import io
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # デバッグ画像へのアクセスを許可
