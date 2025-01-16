@@ -74,12 +74,17 @@ def analyze_board(image):
                     continue
                 
                 # 数字の検出のための画像処理
-                blur = cv2.GaussianBlur(cell_gray, (3, 3), 0)
-                _, thresh = cv2.threshold(blur, 180, 255, cv2.THRESH_BINARY_INV)
+                # アダプティブ閾値処理を使用
+                thresh = cv2.adaptiveThreshold(
+                    cell_gray, 255,
+                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    cv2.THRESH_BINARY_INV, 11, 2
+                )
                 
                 # ノイズ除去
                 kernel = np.ones((2,2), np.uint8)
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
                 
                 # 輪郭検出
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -90,21 +95,24 @@ def analyze_board(image):
                     area = cv2.contourArea(max_contour)
                     
                     # 数字として判定する最小面積（セルサイズに対する比率）
-                    min_area = cell_height * cell_width * 0.02
+                    min_area = cell_height * cell_width * 0.015
                     
                     if area > min_area:
                         # 数字の色を判定するためのマスク作成
                         mask = np.zeros_like(cell_gray)
                         cv2.drawContours(mask, [max_contour], -1, 255, -1)
                         
-                        # マスク領域のHSV平均値を計算
-                        mean_hsv = cv2.mean(cell_hsv, mask=mask)[:3]
+                        # マスク領域のRGB平均値を計算
+                        mean_color = cv2.mean(cell_denoised, mask=mask)[:3]
                         
-                        # 緑色の判定（HSVで判定）
+                        # HSVでの色判定
+                        color_hsv = cv2.cvtColor(np.uint8([[mean_color]]), cv2.COLOR_RGB2HSV)[0][0]
+                        
+                        # 緑色の判定
                         is_green = (
-                            90 <= mean_hsv[0] <= 150 and  # 色相が緑の範囲
-                            mean_hsv[1] >= 50 and  # 彩度が一定以上
-                            mean_hsv[2] >= 50  # 明度が一定以上
+                            45 <= color_hsv[0] <= 75 and  # 緑の色相範囲
+                            color_hsv[1] >= 50 and  # 最小彩度
+                            color_hsv[2] >= 50  # 最小明度
                         )
                         
                         board[i][j] = 2 if is_green else 1
