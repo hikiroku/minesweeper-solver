@@ -118,25 +118,31 @@ def analyze_board(image):
                 # 白背景（開封済み）の判定
                 color_std = np.std(mean_color)  # RGB値の標準偏差
                 color_mean = np.mean(mean_color)  # RGB値の平均
+                color_min = np.min(mean_color)   # RGB値の最小値
                 
                 is_opened = (
-                    color_mean > 150 and  # 全体的に明るい
-                    color_std < 25 and  # RGB値の差が小さい
-                    not is_blue and  # 青色マスでない
-                    mean_color[2] < 200  # 青が強すぎない
+                    color_mean > 140 and  # 全体的に明るい
+                    color_min > 120 and   # 各色が一定以上
+                    color_std < 25 and    # RGB値の差が小さい
+                    not is_blue and       # 青色マスでない
+                    mean_color[2] < 200   # 青が強すぎない
                 )
                 
                 # デバッグ情報を保存
-                debug_info = np.zeros((100, 300, 3), dtype=np.uint8)
-                cv2.putText(debug_info, f"R:{mean_color[0]:.0f} G:{mean_color[1]:.0f} B:{mean_color[2]:.0f}", 
+                debug_info = np.zeros((140, 300, 3), dtype=np.uint8)
+                cv2.putText(debug_info, f"RGB: ({mean_color[0]:.0f}, {mean_color[1]:.0f}, {mean_color[2]:.0f})", 
                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(debug_info, f"Std:{np.std(mean_color):.1f}", 
+                cv2.putText(debug_info, f"Mean: {color_mean:.1f}", 
                           (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(debug_info, f"Is Blue: {is_blue}", 
+                cv2.putText(debug_info, f"Min: {color_min:.1f}", 
                           (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                cv2.putText(debug_info, f"Is Opened: {is_opened}", 
+                cv2.putText(debug_info, f"Std: {color_std:.1f}", 
                           (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                save_debug_image(debug_info, "color_info", cell_id)
+                cv2.putText(debug_info, f"Is Blue: {is_blue}", 
+                          (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(debug_info, f"Is Opened: {is_opened}", 
+                          (10, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                save_debug_image(debug_info, "analysis", cell_id)
                 
                 if is_blue:
                     board[i][j] = 0  # 未開封マス
