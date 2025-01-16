@@ -33,29 +33,43 @@ def analyze_board(image):
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
             try:
+                # グレースケールに変換して輝度を解析
+                cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
+                brightness = np.mean(cell_gray)
+                contrast = np.std(cell_gray)
+                
                 # RGB平均値を計算
                 avg_rgb = np.mean(cell, axis=(0, 1))
                 
-                # 白背景の判定（RGBがすべて高い値）
-                is_white_bg = all(v > 200 for v in avg_rgb)
-                
                 # 青色の未開封マスの判定
-                is_blue = (avg_rgb[2] > 150 and  # 青が強い
-                          avg_rgb[2] > avg_rgb[0] * 1.5 and  # 赤より青が強い
-                          avg_rgb[2] > avg_rgb[1] * 1.5)  # 緑より青が強い
+                is_blue = (
+                    avg_rgb[2] > 150 and  # 青が強い
+                    avg_rgb[2] > avg_rgb[0] * 1.3 and  # 赤より青が強い
+                    avg_rgb[2] > avg_rgb[1] * 1.3 and  # 緑より青が強い
+                    brightness < 180  # 全体的に暗め
+                )
+                
+                # 白背景（開封済み）の判定
+                is_opened = (
+                    brightness > 200 and  # 全体的に明るい
+                    contrast < 40 and  # コントラストが低い
+                    avg_rgb[0] > 180 and  # 赤が強い
+                    avg_rgb[1] > 180 and  # 緑が強い
+                    avg_rgb[2] > 180 and  # 青が強い
+                    max(avg_rgb) - min(avg_rgb) < 30  # RGB値の差が小さい
+                )
                 
                 if is_blue:
                     board[i][j] = 0  # 未開封マス
                     continue
                 
-                if not is_white_bg:
-                    board[i][j] = 0  # 背景が白くない場合は未開封として扱う
+                if not is_opened:
+                    board[i][j] = 0  # 未開封マス
                     continue
                 
-                # 数字の検出（白背景の場合のみ）
-                cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
+                # 数字の検出のための画像処理
                 blur = cv2.GaussianBlur(cell_gray, (3, 3), 0)
-                _, thresh = cv2.threshold(blur, 150, 255, cv2.THRESH_BINARY_INV)
+                _, thresh = cv2.threshold(blur, 160, 255, cv2.THRESH_BINARY_INV)
                 
                 # ノイズ除去
                 kernel = np.ones((2,2), np.uint8)
