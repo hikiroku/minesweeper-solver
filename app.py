@@ -32,38 +32,44 @@ def analyze_board(image):
             x = j * cell_width
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
-            # セルの平均色を計算
-            avg_color = np.mean(cell, axis=(0, 1))
+            # HSV色空間に変換
+            cell_hsv = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
             
-            # 青色のセルは未開封として扱う
-            if avg_color[2] > 200 and avg_color[0] < 150 and avg_color[1] < 150:  # 青色判定
+            # 青色の検出（未開封マス）
+            blue_mask = cv2.inRange(cell_hsv, 
+                                  np.array([100, 50, 50]), 
+                                  np.array([130, 255, 255]))
+            if np.sum(blue_mask) > (cell_height * cell_width * 0.3):
                 board[i][j] = 0
                 continue
             
-            # グレースケールに変換して数字を判定
+            # 数字の検出
             cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
+            _, thresh = cv2.threshold(cell_gray, 180, 255, cv2.THRESH_BINARY_INV)
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            # 白背景の場合は開封済み
-            if np.mean(cell_gray) > 200:
-                # 数字の検出を試みる
-                _, thresh = cv2.threshold(cell_gray, 127, 255, cv2.THRESH_BINARY_INV)
-                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contours) > 0:
+                # 最大の輪郭を取得
+                max_contour = max(contours, key=cv2.contourArea)
+                area = cv2.contourArea(max_contour)
                 
-                if len(contours) > 0:
-                    # 数字の面積を計算
-                    area = cv2.contourArea(max(contours, key=cv2.contourArea))
-                    if area > 50:  # 一定以上の面積がある場合は数字として扱う
-                        # 数字の色に基づいて値を判定
-                        if np.mean(cell[:, :, 1]) > np.mean(cell[:, :, 0]):  # 緑色が強い
-                            board[i][j] = 2
-                        else:  # それ以外（青色）
-                            board[i][j] = 1
-                    else:
-                        board[i][j] = 0  # 数字なしの開封済みマス
+                if area > (cell_height * cell_width * 0.03):  # 数字として判定する最小面積
+                    # 数字の色を判定
+                    number_mask = np.zeros_like(cell_gray)
+                    cv2.drawContours(number_mask, [max_contour], -1, 255, -1)
+                    
+                    # マスク領域の色を取得
+                    mean_color = cv2.mean(cell_hsv, mask=number_mask)
+                    
+                    # 色相に基づいて数字を判定
+                    if 50 <= mean_color[0] <= 80:  # 緑色
+                        board[i][j] = 2
+                    else:  # 青色
+                        board[i][j] = 1
                 else:
-                    board[i][j] = 0  # 数字なしの開封済みマス
+                    board[i][j] = 0  # 小さすぎる輪郭は無視
             else:
-                board[i][j] = 0  # 未開封のマス
+                board[i][j] = 0  # 数字なし
     
     return board
 
