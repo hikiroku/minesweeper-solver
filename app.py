@@ -5,24 +5,23 @@ import cv2
 from PIL import Image
 import io
 
-app = Flask(__name__, static_folder='uploads')
+app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static/debug')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # デバッグ画像へのアクセスを許可
-@app.route('/uploads/debug/<path:filename>')
-def download_debug_file(filename):
-    return send_from_directory(os.path.join(UPLOAD_FOLDER, 'debug'), filename)
+@app.route('/static/debug/<path:filename>')
+def debug_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 # デバッグ情報をレスポンスに追加
 def get_debug_info():
-    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
-    if not os.path.exists(debug_dir):
+    if not os.path.exists(UPLOAD_FOLDER):
         return []
     
     debug_files = []
-    for file in sorted(os.listdir(debug_dir)):
+    for file in sorted(os.listdir(UPLOAD_FOLDER)):
         if file.endswith('.png'):
             parts = file.replace('.png', '').split('_')
             if len(parts) >= 3:
@@ -31,21 +30,20 @@ def get_debug_info():
                 debug_files.append({
                     'cell_id': cell_id,
                     'process': process,
-                    'url': f'/uploads/debug/{file}'
+                    'url': f'/static/debug/{file}'
                 })
     return debug_files
 
 def save_debug_image(img, name, cell_id):
     """デバッグ用の画像を保存"""
-    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
-    os.makedirs(debug_dir, exist_ok=True)
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     
     if isinstance(img, np.ndarray):
         if len(img.shape) == 2:  # グレースケール
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         elif img.shape[2] == 4:  # RGBA
             img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-        cv2.imwrite(os.path.join(debug_dir, f'cell_{cell_id}_{name}.png'), img)
+        cv2.imwrite(os.path.join(UPLOAD_FOLDER, f'cell_{cell_id}_{name}.png'), img)
 
 def analyze_board(image):
     """
@@ -53,10 +51,9 @@ def analyze_board(image):
     Returns: 8x8の二次元配列（0: 未開封, 1-8: 数字, 9: 地雷）
     """
     # デバッグ用ディレクトリをクリア
-    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
-    if os.path.exists(debug_dir):
-        for file in os.listdir(debug_dir):
-            os.remove(os.path.join(debug_dir, file))
+    if os.path.exists(UPLOAD_FOLDER):
+        for file in os.listdir(UPLOAD_FOLDER):
+            os.remove(os.path.join(UPLOAD_FOLDER, file))
     
     # 画像を配列に変換
     img_array = np.array(image)
