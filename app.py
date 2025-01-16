@@ -33,37 +33,36 @@ def analyze_board(image):
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
             try:
-                # 画像の前処理
-                cell_blur = cv2.GaussianBlur(cell, (3, 3), 0)
-                cell_gray = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2GRAY)
-                cell_hsv = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2HSV)
+                # 画像の前処理とノイズ除去
+                cell_denoised = cv2.fastNlMeansDenoisingColored(cell, None, 10, 10, 7, 21)
+                cell_gray = cv2.cvtColor(cell_denoised, cv2.COLOR_RGB2GRAY)
+                cell_hsv = cv2.cvtColor(cell_denoised, cv2.COLOR_RGB2HSV)
                 
                 # コントラストを強調
-                lab = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2LAB)
-                l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-                cl = clahe.apply(l)
-                enhanced = cv2.merge((cl,a,b))
-                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
-                enhanced_hsv = cv2.cvtColor(enhanced, cv2.COLOR_RGB2HSV)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
+                cell_gray = clahe.apply(cell_gray)
                 
-                # HSVの平均値と標準偏差を計算（強調画像を使用）
-                hsv_mean = np.mean(enhanced_hsv, axis=(0, 1))
-                hsv_std = np.std(enhanced_hsv, axis=(0, 1))
-                
-                # 青色の未開封マスの判定（HSVで判定）
-                blue_mask = cv2.inRange(enhanced_hsv, 
-                    np.array([100, 50, 50]), 
-                    np.array([140, 255, 255]))
-                is_blue = np.sum(blue_mask) > (cell_height * cell_width * 0.3)
+                # 青色の未開封マスの判定
+                blue_lower = np.array([100, 50, 50])
+                blue_upper = np.array([140, 255, 255])
+                blue_mask = cv2.inRange(cell_hsv, blue_lower, blue_upper)
+                blue_ratio = np.sum(blue_mask) / (cell_height * cell_width)
+                is_blue = blue_ratio > 0.4
                 
                 # 白背景（開封済み）の判定
-                brightness = np.mean(cell_gray)
-                white_pixels = np.sum(cell_gray > 220)
+                # 輝度ヒストグラムを計算
+                hist = cv2.calcHist([cell_gray], [0], None, [256], [0,256])
+                bright_pixels = np.sum(hist[200:]) / (cell_height * cell_width)
+                
+                # HSVでの白色判定
+                white_lower = np.array([0, 0, 200])
+                white_upper = np.array([180, 30, 255])
+                white_mask = cv2.inRange(cell_hsv, white_lower, white_upper)
+                white_ratio = np.sum(white_mask) / (cell_height * cell_width)
+                
                 is_opened = (
-                    brightness > 200 and  # 全体的に明るい
-                    white_pixels > (cell_height * cell_width * 0.7) and  # 白色ピクセルが多い
-                    hsv_mean[1] < 30  # 彩度が低い
+                    bright_pixels > 0.7 and  # 明るいピクセルが多い
+                    white_ratio > 0.6  # 白色ピクセルが多い
                 )
                 
                 if is_blue:
