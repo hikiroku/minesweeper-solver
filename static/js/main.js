@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const errorDiv = document.getElementById('error');
     const movesList = document.getElementById('moveslist');
     const canvas = document.getElementById('boardCanvas');
+    const debugDiv = document.getElementById('debug');
+    const debugAccordion = document.getElementById('debugAccordion');
     const ctx = canvas.getContext('2d');
 
     // 数字の色を設定
@@ -12,6 +14,54 @@ document.addEventListener('DOMContentLoaded', function() {
         1: '#0000FF',  // 青色
         2: '#008000',  // 緑色
     };
+
+    // デバッグ画像を表示する関数
+    function displayDebugImages(debugImages) {
+        debugDiv.classList.remove('d-none');
+        debugAccordion.innerHTML = '';
+
+        // セルごとにグループ化
+        const cellGroups = {};
+        debugImages.forEach(image => {
+            if (!cellGroups[image.cell_id]) {
+                cellGroups[image.cell_id] = [];
+            }
+            cellGroups[image.cell_id].push(image);
+        });
+
+        // セルごとにアコーディオンアイテムを作成
+        Object.entries(cellGroups).forEach(([cellId, images], index) => {
+            const [row, col] = cellId.split('_').map(Number);
+            const itemHtml = `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading${cellId}">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                data-bs-target="#collapse${cellId}">
+                            セル (${row + 1}, ${col + 1}) の処理過程
+                        </button>
+                    </h2>
+                    <div id="collapse${cellId}" class="accordion-collapse collapse" 
+                         data-bs-parent="#debugAccordion">
+                        <div class="accordion-body">
+                            <div class="row">
+                                ${images.map(img => `
+                                    <div class="col-md-4 mb-3">
+                                        <div class="card">
+                                            <img src="${img.url}" class="card-img-top" alt="${img.process}">
+                                            <div class="card-body">
+                                                <p class="card-text">${img.process}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            debugAccordion.insertAdjacentHTML('beforeend', itemHtml);
+        });
+    }
 
     // 盤面を描画する関数
     function drawBoard(board) {
@@ -125,6 +175,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             errorDiv.classList.add('d-none');
             resultDiv.classList.add('d-none');
+            debugDiv.classList.add('d-none');
             
             // ローディング表示
             const loadingDiv = document.createElement('div');
@@ -146,6 +197,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 resultDiv.classList.remove('d-none');
                 drawBoard(data.board);
                 displaySafeMoves(data.safe_moves, data.board);
+                if (data.debug_images) {
+                    displayDebugImages(data.debug_images);
+                }
             } else {
                 throw new Error(data.error || 'エラーが発生しました');
             }
@@ -153,6 +207,7 @@ document.addEventListener('DOMContentLoaded', function() {
             errorDiv.textContent = `エラー: ${error.message}`;
             errorDiv.classList.remove('d-none');
             resultDiv.classList.add('d-none');
+            debugDiv.classList.add('d-none');
         }
     });
 
