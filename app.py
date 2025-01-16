@@ -33,28 +33,37 @@ def analyze_board(image):
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
             try:
-                # グレースケールとHSV色空間に変換
-                cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
-                cell_hsv = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
+                # 画像の前処理
+                cell_blur = cv2.GaussianBlur(cell, (3, 3), 0)
+                cell_gray = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2GRAY)
+                cell_hsv = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2HSV)
                 
-                # HSVの平均値と標準偏差を計算
-                hsv_mean = np.mean(cell_hsv, axis=(0, 1))
-                hsv_std = np.std(cell_hsv, axis=(0, 1))
+                # コントラストを強調
+                lab = cv2.cvtColor(cell_blur, cv2.COLOR_RGB2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+                cl = clahe.apply(l)
+                enhanced = cv2.merge((cl,a,b))
+                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
+                enhanced_hsv = cv2.cvtColor(enhanced, cv2.COLOR_RGB2HSV)
+                
+                # HSVの平均値と標準偏差を計算（強調画像を使用）
+                hsv_mean = np.mean(enhanced_hsv, axis=(0, 1))
+                hsv_std = np.std(enhanced_hsv, axis=(0, 1))
                 
                 # 青色の未開封マスの判定（HSVで判定）
-                is_blue = (
-                    180 <= hsv_mean[0] <= 260 and  # 色相が青の範囲（より広く）
-                    hsv_mean[1] >= 30 and  # 彩度の閾値を下げる
-                    50 <= hsv_mean[2] <= 200 and  # 明度の範囲を調整
-                    hsv_std[0] < 40  # 色相のばらつきの許容範囲を広げる
-                )
+                blue_mask = cv2.inRange(enhanced_hsv, 
+                    np.array([100, 50, 50]), 
+                    np.array([140, 255, 255]))
+                is_blue = np.sum(blue_mask) > (cell_height * cell_width * 0.3)
                 
-                # 白背景（開封済み）の判定（HSVで判定）
+                # 白背景（開封済み）の判定
+                brightness = np.mean(cell_gray)
+                white_pixels = np.sum(cell_gray > 220)
                 is_opened = (
-                    hsv_mean[1] < 50 and  # 彩度の閾値を上げる
-                    hsv_mean[2] > 180 and  # 明度の閾値を下げる
-                    hsv_std[1] < 30 and  # 彩度のばらつきの許容範囲を広げる
-                    hsv_std[2] < 30  # 明度のばらつきの許容範囲を広げる
+                    brightness > 200 and  # 全体的に明るい
+                    white_pixels > (cell_height * cell_width * 0.7) and  # 白色ピクセルが多い
+                    hsv_mean[1] < 30  # 彩度が低い
                 )
                 
                 if is_blue:
