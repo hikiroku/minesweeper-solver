@@ -32,44 +32,67 @@ def analyze_board(image):
             x = j * cell_width
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
-            # HSV色空間に変換
-            cell_hsv = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
-            
-            # 青色の検出（未開封マス）
-            blue_mask = cv2.inRange(cell_hsv, 
-                                  np.array([100, 50, 50]), 
-                                  np.array([130, 255, 255]))
-            if np.sum(blue_mask) > (cell_height * cell_width * 0.3):
-                board[i][j] = 0
-                continue
-            
-            # 数字の検出
-            cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
-            _, thresh = cv2.threshold(cell_gray, 180, 255, cv2.THRESH_BINARY_INV)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if len(contours) > 0:
-                # 最大の輪郭を取得
-                max_contour = max(contours, key=cv2.contourArea)
-                area = cv2.contourArea(max_contour)
+            try:
+                # RGB平均値を計算
+                avg_rgb = np.mean(cell, axis=(0, 1))
                 
-                if area > (cell_height * cell_width * 0.03):  # 数字として判定する最小面積
-                    # 数字の色を判定
-                    number_mask = np.zeros_like(cell_gray)
-                    cv2.drawContours(number_mask, [max_contour], -1, 255, -1)
+                # 白背景の判定（RGBがすべて高い値）
+                is_white_bg = all(v > 200 for v in avg_rgb)
+                
+                # 青色の未開封マスの判定
+                is_blue = (avg_rgb[2] > 150 and  # 青が強い
+                          avg_rgb[2] > avg_rgb[0] * 1.5 and  # 赤より青が強い
+                          avg_rgb[2] > avg_rgb[1] * 1.5)  # 緑より青が強い
+                
+                if is_blue:
+                    board[i][j] = 0  # 未開封マス
+                    continue
+                
+                if not is_white_bg:
+                    board[i][j] = 0  # 背景が白くない場合は未開封として扱う
+                    continue
+                
+                # 数字の検出（白背景の場合のみ）
+                cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
+                blur = cv2.GaussianBlur(cell_gray, (3, 3), 0)
+                _, thresh = cv2.threshold(blur, 150, 255, cv2.THRESH_BINARY_INV)
+                
+                # ノイズ除去
+                kernel = np.ones((2,2), np.uint8)
+                thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                
+                # 輪郭検出
+                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                if contours:
+                    # 最大の輪郭を取得
+                    max_contour = max(contours, key=cv2.contourArea)
+                    area = cv2.contourArea(max_contour)
                     
-                    # マスク領域の色を取得
-                    mean_color = cv2.mean(cell_hsv, mask=number_mask)
+                    # 数字として判定する最小面積（セルサイズに対する比率）
+                    min_area = cell_height * cell_width * 0.02
                     
-                    # 色相に基づいて数字を判定
-                    if 50 <= mean_color[0] <= 80:  # 緑色
-                        board[i][j] = 2
-                    else:  # 青色
-                        board[i][j] = 1
+                    if area > min_area:
+                        # 数字の色を判定するためのマスク作成
+                        mask = np.zeros_like(cell_gray)
+                        cv2.drawContours(mask, [max_contour], -1, 255, -1)
+                        
+                        # マスク領域のRGB平均値を計算
+                        mean_color = cv2.mean(cell, mask=mask)[:3]
+                        
+                        # 緑色の判定
+                        is_green = (mean_color[1] > mean_color[0] * 1.2 and  # 赤より緑が強い
+                                  mean_color[1] > mean_color[2] * 1.2)  # 青より緑が強い
+                        
+                        board[i][j] = 2 if is_green else 1
+                    else:
+                        board[i][j] = 0  # 小さすぎる輪郭は無視
                 else:
-                    board[i][j] = 0  # 小さすぎる輪郭は無視
-            else:
-                board[i][j] = 0  # 数字なし
+                    board[i][j] = 0  # 数字なし
+                
+            except Exception as e:
+                print(f"Error processing cell ({i},{j}): {str(e)}")
+                board[i][j] = 0  # エラーが発生した場合は未開封として扱う
     
     return board
 
