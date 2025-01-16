@@ -102,96 +102,80 @@ def find_safe_moves(board):
     Returns: 安全に開けるマスの座標リスト [(row, col), ...]
     """
     safe_moves = set()
-    mine_positions = set()
     directions = [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]
 
-    def get_surrounding_cells(row, col):
-        """指定されたマスの周囲8マスの情報を取得"""
-        cells = []
+    def get_adjacent_cells(row, col):
+        """周囲のマスの情報を取得"""
+        cells = {
+            'unopened': [],  # 未開封マス
+            'numbers': [],   # 数字マス
+            'all': []       # すべてのマス
+        }
         for dx, dy in directions:
             new_row, new_col = row + dx, col + dy
             if 0 <= new_row < 8 and 0 <= new_col < 8:
-                cells.append((new_row, new_col))
+                cells['all'].append((new_row, new_col))
+                if board[new_row][new_col] == 0:
+                    cells['unopened'].append((new_row, new_col))
+                elif 1 <= board[new_row][new_col] <= 8:
+                    cells['numbers'].append((new_row, new_col))
         return cells
 
-    def get_cell_info(row, col):
-        """マスの周囲の情報を取得"""
-        surrounding = get_surrounding_cells(row, col)
-        unopened = []
-        numbers = []
-        for r, c in surrounding:
-            value = board[r][c]
-            if value == 0:
-                unopened.append((r, c))
-            elif 1 <= value <= 8:
-                numbers.append((r, c))
-        return unopened, numbers
+    def check_number_one(row, col):
+        """数字1のマスを解析"""
+        cells = get_adjacent_cells(row, col)
+        unopened = cells['unopened']
+        
+        # 周囲の未開封マスが1つだけの場合、その他の未開封マスは安全
+        if len(unopened) == 1:
+            # この1つの未開封マスは地雷の可能性が高い
+            mine_cell = unopened[0]
+            
+            # 地雷セルの周囲の数字1マスをチェック
+            mine_adjacent = get_adjacent_cells(mine_cell[0], mine_cell[1])
+            for adj_row, adj_col in mine_adjacent['numbers']:
+                if board[adj_row][adj_col] == 1:
+                    # 他の数字1マスの周囲の未開封マスは安全
+                    other_cells = get_adjacent_cells(adj_row, adj_col)
+                    for cell in other_cells['unopened']:
+                        if cell != mine_cell:  # 地雷の可能性があるマス以外を安全とする
+                            safe_moves.add(cell)
 
-    def analyze_number(row, col):
-        """数字マスを解析"""
-        number = board[row][col]
-        surrounding = get_surrounding_cells(row, col)
-        unopened = []
-        confirmed_mines = 0
-
-        # 周囲のマスの状態を確認
-        for r, c in surrounding:
-            if (r, c) in mine_positions:
-                confirmed_mines += 1
-            elif board[r][c] == 0:  # 未開封
-                unopened.append((r, c))
-
-        # 残りの地雷数を計算
-        remaining_mines = number - confirmed_mines
-
-        # 未開封マスの数が残りの地雷数と等しい場合、それらは地雷
-        if len(unopened) == remaining_mines:
-            mine_positions.update(unopened)
-            # 周囲の他の数字マスも解析
-            for r, c in get_cell_info(row, col)[1]:
-                if 1 <= board[r][c] <= 8:
-                    analyze_number(r, c)
-
-        # 残りの地雷数が0の場合、未開封マスは安全
-        elif remaining_mines == 0:
-            safe_moves.update(unopened)
-
-    def find_obvious_safe_moves():
-        """明らかに安全なマスを見つける"""
-        for i in range(8):
-            for j in range(8):
-                if board[i][j] == 1:  # 数字1のマスを確認
-                    unopened, _ = get_cell_info(i, j)
-                    if len(unopened) == 1:  # 周囲に1つだけ未開封マスがある場合
-                        # その未開封マスは地雷で、周囲の他の未開封マスは安全
-                        mine_positions.add(unopened[0])
-                        for r, c in get_surrounding_cells(i, j):
-                            if board[r][c] == 0 and (r, c) not in mine_positions:
-                                safe_moves.add((r, c))
+    def check_number_two(row, col):
+        """数字2のマスを解析"""
+        cells = get_adjacent_cells(row, col)
+        unopened = cells['unopened']
+        
+        # 周囲の未開封マスが2つの場合、その他の未開封マスは安全
+        if len(unopened) == 2:
+            # この2つの未開封マスは地雷の可能性が高い
+            for adj_row, adj_col in cells['numbers']:
+                if board[adj_row][adj_col] == 1:
+                    # 数字1マスの周囲の未開封マスで、元の2つに含まれないものは安全
+                    other_cells = get_adjacent_cells(adj_row, adj_col)
+                    for cell in other_cells['unopened']:
+                        if cell not in unopened:
+                            safe_moves.add(cell)
 
     # メインの解析ロジック
-    # 1. まず数字1のマスから解析
-    find_obvious_safe_moves()
-
-    # 2. すべての数字マスを解析
     for i in range(8):
         for j in range(8):
-            if 1 <= board[i][j] <= 8:
-                analyze_number(i, j)
+            if board[i][j] == 1:
+                check_number_one(i, j)
+            elif board[i][j] == 2:
+                check_number_two(i, j)
 
-    # 3. 地雷の位置から安全なマスを特定
+    # 追加の安全マス判定
     for i in range(8):
         for j in range(8):
-            if board[i][j] == 0 and (i, j) not in mine_positions:
-                # 周囲の数字マスをチェック
-                _, numbers = get_cell_info(i, j)
-                is_safe = True
-                for r, c in numbers:
-                    if board[r][c] == len([pos for pos in get_surrounding_cells(r, c) if pos in mine_positions]):
-                        is_safe = False
-                        break
-                if is_safe:
-                    safe_moves.add((i, j))
+            if board[i][j] == 0:  # 未開封マス
+                cells = get_adjacent_cells(i, j)
+                # 周囲に数字1があり、その数字1の周囲の未開封マスが1つだけの場合
+                for num_row, num_col in cells['numbers']:
+                    if board[num_row][num_col] == 1:
+                        num_cells = get_adjacent_cells(num_row, num_col)
+                        if len(num_cells['unopened']) == 1 and num_cells['unopened'][0] != (i, j):
+                            safe_moves.add((i, j))
 
     return list(safe_moves)
 
