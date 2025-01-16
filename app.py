@@ -5,7 +5,7 @@ import cv2
 from PIL import Image
 import io
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'debug')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -13,7 +13,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # デバッグ画像へのアクセスを許可
 @app.route('/static/debug/<path:filename>')
 def debug_file(filename):
-    return send_from_directory(os.path.join(app.static_folder, 'debug'), filename)
+    return send_from_directory(UPLOAD_FOLDER, filename, as_attachment=False)
 
 # デバッグ情報をレスポンスに追加
 def get_debug_info():
