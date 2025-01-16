@@ -79,8 +79,17 @@ def analyze_board(image):
                 cell_id = f"{i}_{j}"
                 save_debug_image(cell, "original", cell_id)
                 
+                # セルを9分割し、中央部分のみを使用
+                cell_height_third = cell_height // 3
+                cell_width_third = cell_width // 3
+                center_y = cell_height_third
+                center_x = cell_width_third
+                center_cell = cell[center_y:center_y+cell_height_third, 
+                                 center_x:center_x+cell_width_third]
+                save_debug_image(center_cell, "center", cell_id)
+                
                 # 画像の前処理とノイズ除去
-                cell_denoised = cv2.fastNlMeansDenoisingColored(cell, None, 10, 10, 7, 21)
+                cell_denoised = cv2.fastNlMeansDenoisingColored(center_cell, None, 10, 10, 7, 21)
                 save_debug_image(cell_denoised, "denoised", cell_id)
                 
                 cell_gray = cv2.cvtColor(cell_denoised, cv2.COLOR_RGB2GRAY)
@@ -100,13 +109,15 @@ def analyze_board(image):
                 blue_mask = cv2.inRange(cell_hsv, blue_lower, blue_upper)
                 save_debug_image(blue_mask, "blue_mask", cell_id)
                 
-                blue_ratio = np.sum(blue_mask) / (cell_height * cell_width)
+                # 中央部分のサイズに基づいて比率を計算
+                center_area = cell_height_third * cell_width_third
+                blue_ratio = np.sum(blue_mask) / center_area
                 is_blue = blue_ratio > 0.4
                 
                 # 白背景（開封済み）の判定
                 # 輝度ヒストグラムを計算
                 hist = cv2.calcHist([cell_gray], [0], None, [256], [0,256])
-                bright_pixels = np.sum(hist[200:]) / (cell_height * cell_width)
+                bright_pixels = np.sum(hist[200:]) / center_area
                 
                 # HSVでの白色判定
                 white_lower = np.array([0, 0, 200])
@@ -114,7 +125,7 @@ def analyze_board(image):
                 white_mask = cv2.inRange(cell_hsv, white_lower, white_upper)
                 save_debug_image(white_mask, "white_mask", cell_id)
                 
-                white_ratio = np.sum(white_mask) / (cell_height * cell_width)
+                white_ratio = np.sum(white_mask) / center_area
                 
                 is_opened = (
                     bright_pixels > 0.7 and  # 明るいピクセルが多い
@@ -154,8 +165,8 @@ def analyze_board(image):
                     max_contour = max(contours, key=cv2.contourArea)
                     area = cv2.contourArea(max_contour)
                     
-                    # 数字として判定する最小面積（セルサイズに対する比率）
-                    min_area = cell_height * cell_width * 0.015
+                    # 数字として判定する最小面積（中央部分のサイズに対する比率）
+                    min_area = cell_height_third * cell_width_third * 0.1
                     
                     if area > min_area:
                         # 数字の色を判定するためのマスク作成
