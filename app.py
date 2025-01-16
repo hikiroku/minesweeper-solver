@@ -103,34 +103,30 @@ def analyze_board(image):
                 cell_gray = clahe.apply(cell_gray)
                 save_debug_image(cell_gray, "clahe", cell_id)
                 
-                # 青色の未開封マスの判定
-                blue_lower = np.array([100, 50, 50])
-                blue_upper = np.array([140, 255, 255])
-                blue_mask = cv2.inRange(cell_hsv, blue_lower, blue_upper)
-                save_debug_image(blue_mask, "blue_mask", cell_id)
+                # 平均色を計算
+                mean_color = np.mean(cell_denoised, axis=(0, 1))
+                save_debug_image(np.full_like(cell_denoised, mean_color.astype(int)), "mean_color", cell_id)
                 
-                # 中央部分のサイズに基づいて比率を計算
-                center_area = cell_height_third * cell_width_third
-                blue_ratio = np.sum(blue_mask) / center_area
-                is_blue = blue_ratio > 0.4
+                # 青色の未開封マスの判定
+                is_blue = (
+                    mean_color[2] > 180 and  # 青が強い
+                    mean_color[2] > mean_color[0] * 1.5 and  # 赤より青が強い
+                    mean_color[2] > mean_color[1] * 1.5  # 緑より青が強い
+                )
                 
                 # 白背景（開封済み）の判定
-                # 輝度ヒストグラムを計算
-                hist = cv2.calcHist([cell_gray], [0], None, [256], [0,256])
-                bright_pixels = np.sum(hist[200:]) / center_area
-                
-                # HSVでの白色判定
-                white_lower = np.array([0, 0, 200])
-                white_upper = np.array([180, 30, 255])
-                white_mask = cv2.inRange(cell_hsv, white_lower, white_upper)
-                save_debug_image(white_mask, "white_mask", cell_id)
-                
-                white_ratio = np.sum(white_mask) / center_area
-                
                 is_opened = (
-                    bright_pixels > 0.7 and  # 明るいピクセルが多い
-                    white_ratio > 0.6  # 白色ピクセルが多い
+                    mean_color[0] > 200 and  # 赤が強い
+                    mean_color[1] > 200 and  # 緑が強い
+                    mean_color[2] > 200 and  # 青が強い
+                    np.std(mean_color) < 20  # RGB値の差が小さい
                 )
+                
+                # デバッグ情報を保存
+                debug_info = np.zeros((50, 200, 3), dtype=np.uint8)
+                cv2.putText(debug_info, f"R:{mean_color[0]:.0f} G:{mean_color[1]:.0f} B:{mean_color[2]:.0f}", 
+                          (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                save_debug_image(debug_info, "color_info", cell_id)
                 
                 if is_blue:
                     board[i][j] = 0  # 未開封マス
