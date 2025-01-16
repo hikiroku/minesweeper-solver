@@ -109,19 +109,21 @@ def analyze_board(image):
                 
                 # 青色の未開封マスの判定
                 is_blue = (
-                    mean_color[2] > 160 and  # 青が一定以上
-                    mean_color[2] > mean_color[0] * 1.2 and  # 赤より青が強い
-                    mean_color[2] > mean_color[1] * 1.2 and  # 緑より青が強い
-                    mean_color[2] < 230  # 白色との区別
+                    mean_color[2] > 150 and  # 青が一定以上
+                    mean_color[2] > mean_color[0] * 1.3 and  # 赤より青が強い
+                    mean_color[2] > mean_color[1] * 1.3 and  # 緑より青が強い
+                    mean_color[2] < 220  # 白色との区別
                 )
                 
                 # 白背景（開封済み）の判定
+                color_std = np.std(mean_color)  # RGB値の標準偏差
+                color_mean = np.mean(mean_color)  # RGB値の平均
+                
                 is_opened = (
-                    mean_color[0] > 180 and  # 赤が一定以上
-                    mean_color[1] > 180 and  # 緑が一定以上
-                    mean_color[2] > 180 and  # 青が一定以上
-                    np.std(mean_color) < 30 and  # RGB値の差が小さい
-                    not is_blue  # 青色マスでない
+                    color_mean > 150 and  # 全体的に明るい
+                    color_std < 25 and  # RGB値の差が小さい
+                    not is_blue and  # 青色マスでない
+                    mean_color[2] < 200  # 青が強すぎない
                 )
                 
                 # デバッグ情報を保存
