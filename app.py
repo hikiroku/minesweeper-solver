@@ -33,30 +33,28 @@ def analyze_board(image):
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
             try:
-                # グレースケールに変換して輝度を解析
+                # グレースケールとHSV色空間に変換
                 cell_gray = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
-                brightness = np.mean(cell_gray)
-                contrast = np.std(cell_gray)
+                cell_hsv = cv2.cvtColor(cell, cv2.COLOR_RGB2HSV)
                 
-                # RGB平均値を計算
-                avg_rgb = np.mean(cell, axis=(0, 1))
+                # HSVの平均値と標準偏差を計算
+                hsv_mean = np.mean(cell_hsv, axis=(0, 1))
+                hsv_std = np.std(cell_hsv, axis=(0, 1))
                 
-                # 青色の未開封マスの判定
+                # 青色の未開封マスの判定（HSVで判定）
                 is_blue = (
-                    avg_rgb[2] > 150 and  # 青が強い
-                    avg_rgb[2] > avg_rgb[0] * 1.3 and  # 赤より青が強い
-                    avg_rgb[2] > avg_rgb[1] * 1.3 and  # 緑より青が強い
-                    brightness < 180  # 全体的に暗め
+                    180 <= hsv_mean[0] <= 260 and  # 色相が青の範囲（より広く）
+                    hsv_mean[1] >= 30 and  # 彩度の閾値を下げる
+                    50 <= hsv_mean[2] <= 200 and  # 明度の範囲を調整
+                    hsv_std[0] < 40  # 色相のばらつきの許容範囲を広げる
                 )
                 
-                # 白背景（開封済み）の判定
+                # 白背景（開封済み）の判定（HSVで判定）
                 is_opened = (
-                    brightness > 200 and  # 全体的に明るい
-                    contrast < 40 and  # コントラストが低い
-                    avg_rgb[0] > 180 and  # 赤が強い
-                    avg_rgb[1] > 180 and  # 緑が強い
-                    avg_rgb[2] > 180 and  # 青が強い
-                    max(avg_rgb) - min(avg_rgb) < 30  # RGB値の差が小さい
+                    hsv_mean[1] < 50 and  # 彩度の閾値を上げる
+                    hsv_mean[2] > 180 and  # 明度の閾値を下げる
+                    hsv_std[1] < 30 and  # 彩度のばらつきの許容範囲を広げる
+                    hsv_std[2] < 30  # 明度のばらつきの許容範囲を広げる
                 )
                 
                 if is_blue:
@@ -69,7 +67,7 @@ def analyze_board(image):
                 
                 # 数字の検出のための画像処理
                 blur = cv2.GaussianBlur(cell_gray, (3, 3), 0)
-                _, thresh = cv2.threshold(blur, 160, 255, cv2.THRESH_BINARY_INV)
+                _, thresh = cv2.threshold(blur, 180, 255, cv2.THRESH_BINARY_INV)
                 
                 # ノイズ除去
                 kernel = np.ones((2,2), np.uint8)
@@ -91,12 +89,15 @@ def analyze_board(image):
                         mask = np.zeros_like(cell_gray)
                         cv2.drawContours(mask, [max_contour], -1, 255, -1)
                         
-                        # マスク領域のRGB平均値を計算
-                        mean_color = cv2.mean(cell, mask=mask)[:3]
+                        # マスク領域のHSV平均値を計算
+                        mean_hsv = cv2.mean(cell_hsv, mask=mask)[:3]
                         
-                        # 緑色の判定
-                        is_green = (mean_color[1] > mean_color[0] * 1.2 and  # 赤より緑が強い
-                                  mean_color[1] > mean_color[2] * 1.2)  # 青より緑が強い
+                        # 緑色の判定（HSVで判定）
+                        is_green = (
+                            90 <= mean_hsv[0] <= 150 and  # 色相が緑の範囲
+                            mean_hsv[1] >= 50 and  # 彩度が一定以上
+                            mean_hsv[2] >= 50  # 明度が一定以上
+                        )
                         
                         board[i][j] = 2 if is_green else 1
                     else:
