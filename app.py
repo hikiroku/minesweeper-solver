@@ -125,9 +125,15 @@ def analyze_board(image):
                 )
                 
                 # デバッグ情報を保存
-                debug_info = np.zeros((50, 200, 3), dtype=np.uint8)
+                debug_info = np.zeros((100, 300, 3), dtype=np.uint8)
                 cv2.putText(debug_info, f"R:{mean_color[0]:.0f} G:{mean_color[1]:.0f} B:{mean_color[2]:.0f}", 
                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(debug_info, f"Std:{np.std(mean_color):.1f}", 
+                          (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(debug_info, f"Is Blue: {is_blue}", 
+                          (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                cv2.putText(debug_info, f"Is Opened: {is_opened}", 
+                          (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 save_debug_image(debug_info, "color_info", cell_id)
                 
                 if is_blue:
