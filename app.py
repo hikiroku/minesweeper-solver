@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory
 import numpy as np
 import cv2
 from PIL import Image
@@ -10,11 +10,54 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# デバッグ画像へのアクセスを許可
+@app.route('/uploads/debug/<path:filename>')
+def download_debug_file(filename):
+    return send_from_directory(os.path.join(UPLOAD_FOLDER, 'debug'), filename)
+
+# デバッグ情報をレスポンスに追加
+def get_debug_info():
+    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
+    if not os.path.exists(debug_dir):
+        return []
+    
+    debug_files = []
+    for file in sorted(os.listdir(debug_dir)):
+        if file.endswith('.png'):
+            parts = file.replace('.png', '').split('_')
+            if len(parts) >= 3:
+                cell_id = f"{parts[1]}_{parts[2]}"
+                process = '_'.join(parts[3:])
+                debug_files.append({
+                    'cell_id': cell_id,
+                    'process': process,
+                    'url': f'/uploads/debug/{file}'
+                })
+    return debug_files
+
+def save_debug_image(img, name, cell_id):
+    """デバッグ用の画像を保存"""
+    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
+    os.makedirs(debug_dir, exist_ok=True)
+    
+    if isinstance(img, np.ndarray):
+        if len(img.shape) == 2:  # グレースケール
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        elif img.shape[2] == 4:  # RGBA
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+        cv2.imwrite(os.path.join(debug_dir, f'cell_{cell_id}_{name}.png'), img)
+
 def analyze_board(image):
     """
     画像から盤面を解析する関数
     Returns: 8x8の二次元配列（0: 未開封, 1-8: 数字, 9: 地雷）
     """
+    # デバッグ用ディレクトリをクリア
+    debug_dir = os.path.join(UPLOAD_FOLDER, 'debug')
+    if os.path.exists(debug_dir):
+        for file in os.listdir(debug_dir):
+            os.remove(os.path.join(debug_dir, file))
+    
     # 画像を配列に変換
     img_array = np.array(image)
     
@@ -33,19 +76,30 @@ def analyze_board(image):
             cell = img_array[y:y+cell_height, x:x+cell_width]
             
             try:
+                cell_id = f"{i}_{j}"
+                save_debug_image(cell, "original", cell_id)
+                
                 # 画像の前処理とノイズ除去
                 cell_denoised = cv2.fastNlMeansDenoisingColored(cell, None, 10, 10, 7, 21)
+                save_debug_image(cell_denoised, "denoised", cell_id)
+                
                 cell_gray = cv2.cvtColor(cell_denoised, cv2.COLOR_RGB2GRAY)
+                save_debug_image(cell_gray, "gray", cell_id)
+                
                 cell_hsv = cv2.cvtColor(cell_denoised, cv2.COLOR_RGB2HSV)
+                save_debug_image(cell_hsv, "hsv", cell_id)
                 
                 # コントラストを強調
                 clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4,4))
                 cell_gray = clahe.apply(cell_gray)
+                save_debug_image(cell_gray, "clahe", cell_id)
                 
                 # 青色の未開封マスの判定
                 blue_lower = np.array([100, 50, 50])
                 blue_upper = np.array([140, 255, 255])
                 blue_mask = cv2.inRange(cell_hsv, blue_lower, blue_upper)
+                save_debug_image(blue_mask, "blue_mask", cell_id)
+                
                 blue_ratio = np.sum(blue_mask) / (cell_height * cell_width)
                 is_blue = blue_ratio > 0.4
                 
@@ -58,6 +112,8 @@ def analyze_board(image):
                 white_lower = np.array([0, 0, 200])
                 white_upper = np.array([180, 30, 255])
                 white_mask = cv2.inRange(cell_hsv, white_lower, white_upper)
+                save_debug_image(white_mask, "white_mask", cell_id)
+                
                 white_ratio = np.sum(white_mask) / (cell_height * cell_width)
                 
                 is_opened = (
@@ -80,11 +136,15 @@ def analyze_board(image):
                     cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                     cv2.THRESH_BINARY_INV, 11, 2
                 )
+                save_debug_image(thresh, "thresh", cell_id)
                 
                 # ノイズ除去
                 kernel = np.ones((2,2), np.uint8)
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+                save_debug_image(thresh, "morph_open", cell_id)
+                
                 thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+                save_debug_image(thresh, "morph_close", cell_id)
                 
                 # 輪郭検出
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -101,6 +161,12 @@ def analyze_board(image):
                         # 数字の色を判定するためのマスク作成
                         mask = np.zeros_like(cell_gray)
                         cv2.drawContours(mask, [max_contour], -1, 255, -1)
+                        save_debug_image(mask, "number_mask", cell_id)
+                        
+                        # マスクを適用した元画像を保存
+                        masked_cell = cell_denoised.copy()
+                        masked_cell[mask == 0] = 0
+                        save_debug_image(masked_cell, "masked_number", cell_id)
                         
                         # マスク領域のRGB平均値を計算
                         mean_color = cv2.mean(cell_denoised, mask=mask)[:3]
@@ -220,9 +286,13 @@ def analyze():
         # 安全な手を見つける
         safe_moves = find_safe_moves(board)
         
+        # デバッグ情報を取得
+        debug_info = get_debug_info()
+        
         return jsonify({
             'board': board.tolist(),
-            'safe_moves': safe_moves
+            'safe_moves': safe_moves,
+            'debug_images': debug_info
         })
     
     except Exception as e:
